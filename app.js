@@ -5,7 +5,8 @@ import bodyParser from "body-parser";
 import Gym from "./models/Gym.js";
 import catchAsync from "./utils/catchAsync.js";
 import ExpressError from "./utils/ExpressError.js";
-import { gymJoiSchema } from "./joiSchemas.js";
+import Review from "./models/Review.js";
+import { gymJoiSchema, reviewSchema } from "./joiSchemas.js";
 
 const app = express();
 
@@ -26,6 +27,16 @@ app.use(bodyParser.json());
 
 const validateGym = (req, res, next) => {
   const { error } = gymJoiSchema.validate(req.body);
+  if (error) {
+    const msg = error.details.map((el) => el.message).join(", ");
+    throw new ExpressError(msg, 400);
+  } else {
+    next();
+  }
+};
+
+const validateReview = (req, res, next) => {
+  const { error } = reviewSchema.validate(req.body);
   if (error) {
     const msg = error.details.map((el) => el.message).join(", ");
     throw new ExpressError(msg, 400);
@@ -55,8 +66,32 @@ app.post(
 app.get(
   "/gyms/:id",
   catchAsync(async (req, res) => {
-    const gym = await Gym.findById(req.params.id);
+    const gym = await Gym.findById(req.params.id).populate("reviews");
     res.send({ gym });
+  })
+);
+
+app.post(
+  "/gyms/:id/reviews",
+  validateReview,
+  catchAsync(async (req, res) => {
+    const gym = await Gym.findById(req.params.id);
+    const review = new Review(req.body.review);
+    gym.reviews.push(review);
+    await review.save();
+    await gym.save();
+    res.send({ gym });
+  })
+);
+
+app.get(
+  "/gyms/:id/reviews/:reviewId",
+  catchAsync(async (req, res) => {
+    await Gym.findByIdAndUpdate(req.params.id, {
+      $pull: { reviews: req.params.reviewId },
+    });
+    await Review.findByIdAndDelete(req.params.reviewId);
+    res.status(200).send("review deleted");
   })
 );
 
